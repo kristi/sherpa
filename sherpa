@@ -1,0 +1,51 @@
+#!/bin/bash
+
+root="$HOME/local"
+dbDir="$root/var/lib/pacman/local"
+
+function get_package_deps() {
+    pacman -Si "$1" | sed -ne '/^Depends On/,/:/ {s/^Depends On\s*://; /:/!p}'
+}
+
+function get_package_version() {
+    pacman -Si "$1" | sed -ne 's/^Version\s*: //p'
+}
+
+function fake_install() {
+    local name="$1"
+    local ver=$(get_package_version "$name")
+    echo "faking installation of $name-$ver in database at '$dbDir'"
+    mkdir -p "$dbDir/$name-$ver"
+    touch "$dbDir/$name-$ver/desc"
+    touch "$dbDir/$name-$ver/files"
+}
+
+case "$1" in
+    install) shift; pacman -S "$@"
+    ;;
+    search) shift; pacman -Ss "$@"
+    ;;
+    remove) shift; pacman -R "$@"
+    ;;
+    upgrade) shift; pacman -Syu "$@"
+    ;;
+    reinstall) shift; pacman -S "$@"
+    ;;
+    localinstall) shift; pacman -U "$@"
+    ;;
+    download) shift; pacman -Sw "$@"
+    ;;
+    autoremove) shift; pacman -Qdtq | pacman -Rs -
+    ;;
+    show) shift; pacman -Qi "$@"
+    ;;
+    info) shift; pacman -Si "$@"
+    ;;
+    list) shift; pacman -Q "$@"
+    ;;
+    fakeinstall) shift; fake_install "$@"
+    ;;
+    deps) shift; get_package_deps "$@"
+    ;;
+esac
+
