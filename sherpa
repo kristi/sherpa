@@ -1,7 +1,32 @@
 #!/bin/bash
+#
+# Sherpa - a Pacman wrapper with human-readable commands
+#
+# ...because I can't remember pacman flags
+#
+# Pacman Rosetta lists command equivalents for various package managers
+# https://wiki.archlinux.org/index.php/Pacman_Rosetta
+#
+# Pacapt has a nice summary of Pacman commands
+# https://github.com/icy/pacapt
+#
+#
 
 root="$HOME/local"
 dbDir="$root/var/lib/pacman/local"
+
+function info() {
+    echo "sherpa: $*" >&2
+}
+function err() {
+    echo "sherpa: Error: $*" >&2
+}
+
+# Echo command before running if verbose is nonempty
+function run() {
+    [[ -n "$verbose" ]] && echo "$@"
+    "$@"
+}
 
 function get_package_deps() {
     pacman -Si "$1" | sed -ne '/^Depends On/,/:/ {s/^Depends On\s*://; /:/!p}'
@@ -11,41 +36,66 @@ function get_package_version() {
     pacman -Si "$1" | sed -ne 's/^Version\s*: //p'
 }
 
-function fake_install() {
+# Fake entry in local package database
+function fake_install_manual() {
     local name="$1"
     local ver=$(get_package_version "$name")
-    echo "faking installation of $name-$ver in database at '$dbDir'"
+    info "manually faking installation of $name-$ver in database at '$dbDir'"
     mkdir -p "$dbDir/$name-$ver"
     touch "$dbDir/$name-$ver/desc"
     touch "$dbDir/$name-$ver/files"
 }
 
+function fake_install() {
+    case "$1" in
+        --manual|-m) shift; fake_install_manual "$@"; return ;;
+    esac
+    local name="$1"
+    local tmpCache="$root/tmp/sherpa-cache"
+    mkdir -p "$tmpCache"
+    run pacman -Sdd --dbonly --cachedir "$tmpCache" "$name"
+    rm -rf "$tmpCache"
+}
+
+function usage() {
+    echo "sherpa - a Pacman wrapper with human-readable commands"
+    echo ""
+    echo "sherpa <command> [args]"
+    echo ""
+    echo "commands:"
+    echo "    alldeps [package]       print dependencies needed to install the package"
+    echo "    autoremove [package]    remove dependencies which are no longer needed"
+    echo "    deps [package]          display a package's dependencies"
+    echo "    download [package]      download package but don't install"
+    echo "    fakeinstall [package]   add local database entry without installing files"
+    echo "    fakeinstall -m [package]  creates empty database entry"
+    echo "    info [package]          display package information from sync database"
+    echo "    install [package]       install a package"
+    echo "    list                    list installed packages"
+    echo "    localinstall [package]  install from a pkg.tar.xz file"
+    echo "    search [package]        search for a package"
+    echo "    show [package]          display installed package information"
+    echo "    reinstall [package]     install a package again, overwriting files"
+    echo "    upgrade [package]       install a newer version of an installed package"
+    echo ""
+}
+
 case "$1" in
-    install) shift; pacman -S "$@"
-    ;;
-    search) shift; pacman -Ss "$@"
-    ;;
-    remove) shift; pacman -R "$@"
-    ;;
-    upgrade) shift; pacman -Syu "$@"
-    ;;
-    reinstall) shift; pacman -S "$@"
-    ;;
-    localinstall) shift; pacman -U "$@"
-    ;;
-    download) shift; pacman -Sw "$@"
-    ;;
-    autoremove) shift; pacman -Qdtq | pacman -Rs -
-    ;;
-    show) shift; pacman -Qi "$@"
-    ;;
-    info) shift; pacman -Si "$@"
-    ;;
-    list) shift; pacman -Q "$@"
-    ;;
-    fakeinstall) shift; fake_install "$@"
-    ;;
-    deps) shift; get_package_deps "$@"
-    ;;
+    -h|--help) usage; exit ;;
+    alldeps) shift; pacman -Sp --print-format "%r/%n-%v" "$@" ;;
+    autoremove) shift; pacman -Qdtq | pacman -Rs - ;;
+    deps) shift; get_package_deps "$@" ;;
+    download) shift; pacman -Sw "$@" ;;
+    fakeinstall) shift; fake_install "$@" ;;
+    info) shift; pacman -Si "$@" ;;
+    install) shift; pacman -S "$@" ;;
+    list) shift; pacman -Q "$@" ;;
+    localinstall) shift; pacman -U "$@" ;;
+    reinstall) shift; pacman -S --force "$@" ;;
+    remove) shift; pacman -R "$@" ;;
+    search) shift; pacman -Ss "$@" ;;
+    show) shift; pacman -Qi "$@" ;;
+    upgrade) shift; pacman -Syu "$@" ;;
+    *) err "unrecognized command '$1'"
 esac
 
